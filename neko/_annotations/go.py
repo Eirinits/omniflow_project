@@ -119,31 +119,11 @@ class Ontology:
 
         return results_df
 
-    def annotate_nodes(self, network, resource):
 
-        annotations_df = op.requests.Annotations.get(resources=resource, wide=True)
-        available_annot = [col for col in annotations_df.columns if col not in ['uniprot', 'genesymbol']]
-        print("Available annotations:")
-        for col in available_annot:
-            print(col)
-        
-        # Ask user for input
-        user_input = input("Enter one or more annotations you would like to include: ")
-        sel_annot = [val.strip() for val in user_input.split(',')]
+def ontology():
 
-        # Filter dataframe based on user input
-        filtered_annot_df = annotations_df.copy()
-        for col in sel_annot:
-            if col in filtered_annot_df.columns:
-                filtered_annot_df = filtered_annot_df[filtered_annot_df[col].notnull()]
-            else:
-                print(f"Column '{col}' not found in dataframe.")
+    if not '_ontology' in globals():
 
-        # Include 'uniprot', 'genesymbol', and user input columns in the final dataframe
-        final_columns = ['uniprot', 'genesymbol'] + sel_annot
-        filtered_annot_df = filtered_annot_df[final_columns]
+        globals()['_ontology'] = Ontology()
 
-        filtered_annot_df = filtered_annot_df[filtered_annot_df['genesymbol'].isin(network.nodes['Genesymbol'])]
-        filtered_annot_df = filtered_annot_df.pivot_table(index=['uniprot', 'genesymbol'], columns=user_input, aggfunc=lambda x: 1, fill_value=0)
-
-        return filtered_annot_df
+    return globals()['_ontology']
