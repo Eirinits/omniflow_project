@@ -3,7 +3,7 @@ from typing import List, Optional
 from pypath.utils import mapping
 from itertools import combinations
 import pandas as pd
-from .._inputs.resources import Resources
+from ..inputs import _universe
 from .._methods.enrichment_methods import Connections
 from typing_extensions import Literal
 import copy
@@ -113,7 +113,7 @@ def mapping_node_identifier(node: str) -> list[str]:
     if mapping.id_from_label0(node):
         # Convert UniProt ID to gene symbol
         uniprot = mapping.id_from_label0(node)
-        if uniprot.startswith("MIMAT"):
+        if uniprot.startswith("MI"):
             genesymbol = uniprot
         else:
             # Set the UniProt ID as the 'Uniprot' value in the new entry
@@ -247,26 +247,37 @@ class Network:
     Methods:
     """
 
-    def __init__(self,
-                 initial_nodes: list[str] = None,
-                 sif_file=None,
-                 resources=None):
+    def __init__(
+            self,
+            initial_nodes: list[str] = None,
+            sif_file=None,
+            resources=None,
+        ):
+
+        self._init_args = locals()
+        del self._init_args['self']
         self.nodes = pd.DataFrame(columns=["Genesymbol", "Uniprot", "Type"])
         self.edges = pd.DataFrame(columns=["source", "target", "Type", "Effect", "References"])
         self.initial_nodes = initial_nodes
         self.__ontology = Ontology()
-        if resources is not None and isinstance(resources, pd.DataFrame) and not resources.empty:
-            self.resources = resources.copy()
-        else:
-            res = Resources()
-            res.load_all_omnipath_interactions()
-            self.resources = res.interactions.copy()
-        if initial_nodes:
-            for node in initial_nodes:
+        self._populate()
+
+
+    def _populate(self):
+
+        self.resources = (
+            _universe.
+            network_universe(self._init_args['resources']).
+            interactions
+        )
+
+        if self.initial_nodes:
+            for node in self.initial_nodes:
                 self.add_node(node)
             self.__drop_missing_nodes()
             self.nodes.reset_index(inplace=True, drop=True)
-        elif sif_file:
+
+        elif sif_files := self._init_args['sif_file']:
             self.initial_nodes = []
             self.__load_network_from_sif(sif_file)
 
@@ -318,20 +329,28 @@ class Network:
         This function does not return anything. It modifies the `nodes` attribute of the `Network` object in-place.
         """
         # Get the list of nodes that exist in the resources database
-        existing_nodes = self.check_nodes(self.nodes["Uniprot"].tolist())
+        existing_nodes = list(set(self.check_nodes(self.nodes["Uniprot"].tolist()))
+                              |
+                              set(self.check_nodes(self.nodes["Genesymbol"].tolist())))
 
-        # Find the nodes in the network that are not in the list of existing nodes
-        missing_nodes = [node for node in self.nodes["Uniprot"].tolist() if node not in existing_nodes]
-
-        # Remove the missing nodes from the network
-        self.nodes = self.nodes[~self.nodes["Uniprot"].isin(missing_nodes)]
+        # Create a mask for nodes that exist in either Uniprot or Genesymbol lists
+        existing_mask = self.nodes["Uniprot"].isin(existing_nodes) | self.nodes["Genesymbol"].isin(existing_nodes)
+        # Identify removed nodes
+        removed_nodes = self.nodes[~existing_mask]
 
         # Print a warning with the name of the missing nodes
-        if missing_nodes:
+        if not removed_nodes.empty:
+            missing_uniprot = removed_nodes["Uniprot"].tolist()
+            missing_genesymbol = removed_nodes["Genesymbol"].tolist()
+            missing_identifiers = list(set(missing_uniprot + missing_genesymbol))  # Remove duplicates
             print(
                 "Warning: The following nodes were not found in the resources database and have been removed from the "
                 "network:",
-                ", ".join(missing_nodes))
+                ", ".join(str(node) for node in missing_identifiers if pd.notna(node))
+            )
+        # Keep only the nodes that exist in the resources database
+        self.nodes = self.nodes[existing_mask]
+
         return
 
     def add_node(self, node: str, from_sif: bool = False) -> None:
@@ -375,7 +394,7 @@ class Network:
         else:
             new_entry = {"Genesymbol": genesymbol, "Uniprot": uniprot, "Type": "NaN"}
 
-        if not self.check_node(uniprot):
+        if not self.check_node(uniprot) and not self.check_node(genesymbol):
             print("Error: node %s is not present in the resources database" % node)
             return
 
@@ -424,7 +443,8 @@ class Network:
 
         # Check if the edge represents inhibition or stimulation and set the effect accordingly
         effect = check_sign(edge)
-        references = edge["references"].values[0]
+        # check if the column reference is present in the edge dataframe
+        references = edge["references"].values[0] if "references" in edge.columns else None
         # Get the type value from the edge DataFrame or set it to None
         edge_type = edge["type"].values[0] if "type" in edge.columns else None
 
@@ -450,7 +470,7 @@ class Network:
         existing_edge = self.edges[(self.edges["source"] == edge["source"].values[0]) &
                                    (self.edges["target"] == edge["target"].values[0]) &
                                    (self.edges["Effect"] == effect)]
-        if not existing_edge.empty:
+        if not existing_edge.empty and references is not None:
             self.edges.loc[existing_edge.index, "References"] += "; " + str(references)
         else:
             # Concatenate the new edge DataFrame with the existing edges in the graph
