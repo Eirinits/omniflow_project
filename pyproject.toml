@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "nekomata"
-version = "0.9.5"
+version = "0.9.6"
 description = "Package to extract, visualize, convert and study interactions from database into executable activity flow based model"
 license = "GNU General Public License Version 3"
 authors = [
@@ -40,7 +40,12 @@ unipressed = "*"
 jupyterlab = "*"
 pycurl = "*"
 graphviz = "*"
-pandas = "*"
+pandas = "2.2.2"
+omnipath = "*"
+pypath-omnipath = "*"
+networkcommons = { git = "https://github.com/saezlab/networkcommons.git", branch = "main" }
+nbsphinx = { git = "https://github.com/deeenes/nbsphinx.git", branch = "timings" }
+jupyter-contrib-nbextensions = { git = "https://github.com/deeenes/jupyter_contrib_nbextensions.git", branch = "master" }
 
 [tool.poetry.dev-dependencies]
 pandoc = "*"
@@ -49,6 +54,8 @@ tox = ">=3.20.1"
 pre-commit = ">=2.17.0"
 bump2version = "*"
 coverage = ">=6.0"
+pytest-cov = "^6.0.0"
+codecov-cli = "^0.8.0"
 sphinx = "^7.2.6"
 sphinx-last-updated-by-git = ">=0.3"
 sphinx-autodoc-typehints = ">=1.18.0"
